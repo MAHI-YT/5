@@ -131,8 +131,8 @@ cmd({
 
 // WELCOME
 cmd({
-    pattern: "welcome",
-    alias: ["setwelcome"],
+    pattern: "welcome1",
+    alias: ["setwelcome1"],
     react: "✅",
     desc: "Enable or disable welcome messages for new members",
     category: "settings",
@@ -156,8 +156,8 @@ async (conn, mek, m, { from, args, isCreator, reply }) => {
 
 // WELCOME
 cmd({
-    pattern: "goodbye",
-    alias: ["setgoodbye"],
+    pattern: "goodbye1",
+    alias: ["setgoodbye1"],
     react: "✅",
     desc: "Enable or disable welcome messages for new members",
     category: "settings",
