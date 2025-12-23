@@ -41,7 +41,7 @@ async (conn, mek, m, { from, args, q, reply, react }) => {
         // Send video to chat
         await conn.sendMessage(from, {
             video: Buffer.from(response.data),
-            caption: `🎥 > *IT'S ERFAN AHMAD*`,
+            caption: ` > *IT'S ERFAN AHMAD*`,
             mimetype: 'video/mp4'
         }, { quoted: mek });
 
