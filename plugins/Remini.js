@@ -1,79 +1,81 @@
+
+
 const axios = require('axios');
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const config = require('../config');
 const { cmd } = require('../command');
+const FormData = require('form-data');
 
 cmd({
     pattern: "remini",
     alias: ["enhance"],
-    react: "✨",
-    desc: "Enhance image quality using AI",
+    react: "🪄",
+    desc: "Enhance image quality using Remini AI",
     category: "image",
-    use: ".remini <image_url> or reply to image",
+    use: ".hdimg (reply to image)",
     filename: __filename,
-}, 
-async (conn, mek, m, { from, quoted, q, reply }) => {
+},
+async (conn, mek, m, { from, quoted, reply }) => {
     try {
-        let imageUrl = q;
-
-        // If no URL provided, check for quoted image
-        if (!imageUrl && quoted?.imageMessage) {
-            await reply("⏳ Downloading your image...");
-            
-            const stream = await downloadContentFromMessage(quoted.imageMessage, 'image');
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) {
-                buffer = Buffer.concat([buffer, chunk]);
-            }
-
-            // Upload image to temporary URL
-            const formData = new FormData();
-            const blob = new Blob([buffer], { type: 'image/jpeg' });
-            formData.append('file', blob, 'image.jpg');
-
-            const uploadResponse = await axios.post('https://tmpfiles.org/api/v1/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            imageUrl = uploadResponse.data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+        // Must reply to image
+        if (!quoted || !quoted.imageMessage) {
+            return reply("🖼️ Please reply to an image with `.hdimg`");
         }
 
-        if (!imageUrl) {
-            return reply("📸 *Remini AI Enhancement*\n\nSend: .remini <image_url>\nOr reply to image with: .remini\nExample: .remini https://example.com/image.jpg");
+        await reply("⏳ Processing image, please wait...");
+
+        // Download image from WhatsApp
+        const stream = await downloadContentFromMessage(
+            quoted.imageMessage,
+            'image'
+        );
+
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
         }
 
-        // Simple URL validation
-        if (imageUrl && !imageUrl.startsWith('http')) {
-            return reply("❌ Please provide a valid URL starting with http:// or https://");
+        // Upload image to temporary hosting
+        const form = new FormData();
+        form.append('file', buffer, {
+            filename: 'remini.jpg',
+            contentType: 'image/jpeg'
+        });
+
+        const uploadRes = await axios.post(
+            'https://tmpfiles.org/api/v1/upload',
+            form,
+            { headers: form.getHeaders() }
+        );
+
+        const imageUrl = uploadRes.data.data.url.replace(
+            'tmpfiles.org/',
+            'tmpfiles.org/dl/'
+        );
+
+        // Call NEW Remini API
+        const apiUrl =
+            `https://anabot.my.id/api/ai/remini?imageUrl=${encodeURIComponent(imageUrl)}&apikey=freeApikey`;
+
+        const apiRes = await axios.get(apiUrl, { timeout: 60000 });
+        const apiData = apiRes.data;
+
+        // Validate API response
+        if (!apiData.success || !apiData.data?.result) {
+            return reply("❌ Enhancement failed. API returned no image.");
         }
 
-        await reply("⏳ Enhancing your image... Please wait!");
+        // Send enhanced image
+        await conn.sendMessage(
+            from,
+            {
+                image: { url: apiData.data.result },
+                caption: "✨ Image Enhanced Successfully"
+            },
+            { quoted: m }
+        );
 
-        const apiUrl = `https://api.princetechn.com/api/tools/remini?apikey=prince_tech_api_azfsbshfb&url=${encodeURIComponent(imageUrl)}`;
-        
-        const response = await axios.get(apiUrl, { timeout: 30000 });
-
-        if (response.data?.success && response.data.result?.image_url) {
-            const enhancedUrl = response.data.result.image_url;
-            
-            await conn.sendMessage(from, {
-                image: { url: enhancedUrl },
-                caption: "✨ *Image Enhanced Successfully!*\n\nEnhanced by DARKZONE-MD",
-            }, { quoted: m });
-            
-        } else {
-            throw new Error("API returned no image");
-        }
-
-    } catch (error) {
-        console.error('Remini Error:', error.message);
-        
-        if (error.response?.status === 429) {
-            reply("⏰ Too many requests. Try again later.");
-        } else if (error.code === 'ECONNABORTED') {
-            reply("⏰ Request timeout. Try again.");
-        } else {
-            reply("❌ Failed to enhance image. Check URL/image and try again.");
-        }
+    } catch (err) {
+        console.error("HDIMG ERROR:", err);
+        reply("❌ Image enhancement failed. Please try again.");
     }
 });
