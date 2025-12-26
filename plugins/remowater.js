@@ -1,32 +1,77 @@
-const { cmd } = require('../command');
+
 const axios = require('axios');
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { cmd } = require('../command');
+const FormData = require('form-data');
 
 cmd({
-  pattern: "dewatermark",
-  alias: ["watermark", "rmwatermark", "cleanimage"],
-  desc: "Remove watermark from an image using AI",
-  category: "image-tools",
-  use: ".dewatermark <image_url>",
-  filename: __filename
-}, async (conn, mek, m, { args, reply }) => {
-  const imageUrl = args.join(" ");
-  if (!imageUrl) {
-    return reply("💧 Please provide an image URL to remove watermark.\n\nExample:\n*.dewatermark https://example.com/photo.jpg*");
-  }
+    pattern: "dewatermark",
+    alias: ["watermark", "wr"],
+    react: "🧼",
+    desc: "Remove watermark from image",
+    category: "image",
+    use: ".dewatermark (reply to image)",
+    filename: __filename,
+},
+async (conn, mek, m, { from, quoted, reply }) => {
+    try {
+        if (!quoted || !quoted.imageMessage) {
+            return reply("🖼️ Please reply to an image with `.dewatermark`");
+        }
 
-  try {
-    const apiUrl = `https://api.mrfrankofc.gleeze.com/api/tools/dewatermark?url=${encodeURIComponent(imageUrl)}`;
-    const response = await axios.get(apiUrl, { responseType: 'arraybuffer' });
+        await reply("🧼 Removing watermark, please wait...");
 
-    const buffer = Buffer.from(response.data, 'binary');
+        // Download image from WhatsApp
+        const stream = await downloadContentFromMessage(
+            quoted.imageMessage,
+            'image'
+        );
 
-    await conn.sendMessage(mek.chat, {
-      image: buffer,
-      caption: `🧼 *Watermark Removed Successfully!*\n\n> Processed by *ERFAN AI Cleaner*`
-    }, { quoted: mek });
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
-  } catch (error) {
-    console.error("❌ Error removing watermark:", error.message);
-    reply("❌ *Failed to connect to API or unsupported image format.* Please try again with a valid image URL.");
-  }
+        // Upload to temp hosting
+        const form = new FormData();
+        form.append('file', buffer, {
+            filename: 'image.jpg',
+            contentType: 'image/jpeg'
+        });
+
+        const upload = await axios.post(
+            'https://tmpfiles.org/api/v1/upload',
+            form,
+            { headers: form.getHeaders() }
+        );
+
+        const imageUrl = upload.data.data.url.replace(
+            'tmpfiles.org/',
+            'tmpfiles.org/dl/'
+        );
+
+        // Call dewatermark API (IMAGE RESPONSE)
+        const apiUrl =
+            `https://api.elrayyxml.web.id/api/tools/dewatermark?url=${encodeURIComponent(imageUrl)}`;
+
+        const result = await axios.get(apiUrl, {
+            responseType: "arraybuffer",
+            timeout: 60000
+        });
+
+        // Send processed image back
+        await conn.sendMessage(
+            from,
+            {
+                image: Buffer.from(result.data),
+                caption: "> ✅ Watermark removed successfully"
+            },
+            { quoted: m }
+        );
+
+    } catch (err) {
+        console.error("DEWATERMARK ERROR:", err);
+        reply("❌ Failed to remove watermark. Please try again.");
+    }
 });
+          
